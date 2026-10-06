@@ -1,0 +1,95 @@
+1 Anikthea, Hand of Erebos (CMM) 705 *F*
+1 Abundance (40K) 210
+1 All That Glitters (CMM) 622
+1 Anointed Procession (AKH) 2
+1 Arachnogenesis (CMM) 647
+1 Arcane Signet (AFC) 197
+1 Archon of Sun's Grace (THB) 3
+1 Bastion of Remembrance (CMM) 138
+1 Battle at the Helvault (CMM) 719
+1 Battle for Bretagard (KHM) 203
+1 Beseech the Mirror (WOE) 82
+1 Binding the Old Gods (KHM) 206
+1 Blossoming Sands (NEO) 265
+1 Bolas's Citadel (PLG21) 3 *F*
+1 Boon of the Spirit Realm (CMM) 753
+1 Botanical Plaza (SNC) 350
+1 Cacophony Unleashed (CMM) 761
+1 Calix, Destiny's Hand (THB) 257
+1 Canopy Vista (NCC) 389
+1 Carpet of Flowers (USG) 240
+1 Caves of Koilos (ORI) 245
+1 Command Tower (CLB) 351
+1 Composer of Spring (CMM) 769
+1 Courser of Kruphix (CMM) 888
+1 Cunning Rhetoric (CMM) 864
+1 Daxos, Blessed by the Sun (MUL) 2
+1 Demon of Fate's Design (CMM) 762
+1 Destiny Spinner (CMM) 890
+1 Doomwake Giant (CMM) 865
+1 Dryad of the Ilysian Grove (CMM) 891
+1 Eidolon of Blossoms (CMM) 892
+1 Enchantress's Presence (MH2) 283
+1 Eternal Witness (CMM) 286
+1 Ethereal Armor (Q06) 2
+1 Evolving Wilds (LTC) 306
+1 Exotic Orchard (NCC) 400
+1 Extinguish All Hope (CMM) 157
+1 Farewell (NEO) 13
+1 Farseek (CMM) 894
+1 Felidar Retreat (NCC) 199
+1 Fight Rigging (SNC) 430
+1 Font of Fertility (JOU) 123
+5 Forest (LTR) 271
+1 Fortified Village (MOC) 401
+1 Ghoulish Impetus (CMM) 732
+1 Grasp of Fate (CMM) 823
+1 Graypelt Refuge (LTC) 316
+1 Greater Auramancy (WOT) 4
+1 Heliod, God of the Sun (CMM) 826
+1 Herald of the Pantheon (CMM) 898
+1 Indatha Triome (PIKO) 248s *F*
+1 Jukai Naturalist (NEO) 225
+1 Kenrith's Transformation (AFC) 162
+1 Khalni Heart Expedition (CMR) 428
+1 Land Tax (WOT) 66
+1 Mesa Enchantress (DMR) 267
+1 Mind Stone (40K) 245
+1 Mirari's Wake (CMM) 928
+1 Narci, Fable Singer (CMM) 775
+1 Necroblossom Snarl (LTC) 321
+1 Nessian Wanderer (THB) 183
+1 Nyx Weaver (JOU) 153
+1 Nyxborn Behemoth (CMM) 772
+1 Ondu Spiritdancer (CMM) 756
+1 Orzhov Basilica (AFC) 253
+1 Panharmonicon (2X2) 310
+1 Path to Exile (CMM) 49
+1 Phyrexian Arena (ONE) 283 *F*
+1 Plains (M21) 261
+1 Razorverge Thicket (ONE) 373
+1 Sanctum Weaver (CMM) 910
+1 Sandsteppe Citadel (PLST) KTK-241
+1 Satyr Enchanter (CMM) 936
+1 Scoured Barrens (NEO) 274
+1 Selesnya Sanctuary (C20) 308
+1 Setessan Champion (CMM) 912
+1 Shineshadow Snarl (MOC) 422
+1 Sigil of the Empty Throne (CMM) 836
+1 Sol Ring (CMM) 410
+1 Spirited Companion (J22) 248
+1 Starfield Mystic (M20) 39
+1 Starfield of Nyx (CMM) 840
+1 Sungrass Prairie (ONC) 166
+3 Swamp (MH2) 485
+1 Swiftfoot Boots (PW22) 4 *F*
+1 Sythis, Harvest's Hand (CMM) 938
+1 Tainted Field (MOC) 429
+1 Tainted Wood (DDM) 78
+1 Temple of Malady (M20) 254
+1 Temple of Plenty (SCD) 327
+1 Temple of Silence (DMC) 237
+1 The Binding of the Titans (THB) 166
+1 The Eldest Reborn (DOM) 90
+1 The Mending of Dominaria (ZNC) 74
+1 Verduran Enchantress (CMM) 915

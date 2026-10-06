@@ -1,0 +1,72 @@
+<main class="arena" data-controller="game" data-game-id-value="<%= @game_id %>" data-game-deck-value="<%= @deck %>">
+  <header class="banner">
+    <span>Game <code><%= @game_id %></code> · <span data-game-target="deck"></span></span>
+    <span data-game-target="status">Connecting…</span>
+    <button class="btn" data-game-target="join" data-action="game#join" hidden>Join game</button>
+    <span class="error" data-game-target="error"></span>
+    <button class="btn banner__concede" data-game-target="concede" data-action="game#concede" hidden>Concede</button>
+  </header>
+
+  <section class="deck-picker" data-game-target="picker" hidden>
+    <h2 class="deck-picker__title">Choose your deck</h2>
+    <div class="deck-picker__options" data-game-target="pickerOptions"></div>
+  </section>
+
+  <section class="table" data-game-target="board" hidden>
+    <div class="player player--opponent">
+      <div class="plate" data-game-target="opponent"></div>
+      <div class="hand-back" data-game-target="opponentHand"></div>
+    </div>
+
+    <div class="field field--opponent">
+      <div class="row row--other" data-game-target="opponentOther"></div>
+      <div class="row row--lands" data-game-target="opponentLands"></div>
+      <div class="pile pile--library" data-game-target="opponentLibrary"></div>
+      <div class="pile" data-game-target="opponentGraveyard" data-action="click->game#openGraveyard" data-owner="opponent"></div>
+    </div>
+
+    <div class="field field--you">
+      <div class="row row--other" data-game-target="yourOther"></div>
+      <div class="row row--lands" data-game-target="yourLands"></div>
+      <div class="pile pile--library" data-game-target="yourLibrary"></div>
+      <div class="pile pile--exile" data-game-target="exile" data-action="click->game#openExile"></div>
+      <div class="pile" data-game-target="yourGraveyard" data-action="click->game#openGraveyard" data-owner="you"></div>
+    </div>
+
+    <div class="player player--you">
+      <div class="plate" data-game-target="you"></div>
+      <div class="mana-pool" data-game-target="manaPool" hidden></div>
+      <div class="hand" data-game-target="hand"></div>
+    </div>
+
+    <nav class="phase-bar">
+      <p class="turn" data-game-target="turn"></p>
+      <ol class="steps" data-game-target="steps"></ol>
+    </nav>
+
+    <aside class="sidebar">
+      <div class="spell-stack" data-game-target="stack" hidden>
+        <h3 class="spell-stack__title">Stack</h3>
+        <ol class="spell-stack__items" data-game-target="stackItems"></ol>
+      </div>
+      <p class="hint" data-game-target="hint"></p>
+      <div class="choice" data-game-target="choice" hidden>
+        <p class="choice__prompt" data-game-target="choicePrompt"></p>
+        <div class="choice__options" data-game-target="choiceOptions"></div>
+      </div>
+      <button class="btn btn--primary" data-game-target="advance" data-action="game#advance" title="Space"></button>
+      <h3 class="log__title">Event log</h3>
+      <ol class="log" data-game-target="log"></ol>
+    </aside>
+
+    <div class="viewer" data-game-target="viewer" hidden>
+      <div class="viewer__bar">
+        <strong data-game-target="viewerTitle"></strong>
+        <button class="btn" data-action="game#closeGraveyard">Close</button>
+      </div>
+      <div class="viewer__cards" data-game-target="viewerCards"></div>
+    </div>
+
+    <div class="preview" data-game-target="preview" hidden><img alt=""></div>
+  </section>
+</main>

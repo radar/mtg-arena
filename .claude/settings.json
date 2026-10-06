@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bundle exec rspec *)",
+      "Bash(bin/rails test *)",
+      "Bash(bin/rails test)"
+    ],
+    "deny": [
+      "Bash(sed)",
+      "Bash(sed:*)",
+      "Bash(sed *)"
+    ]
+  }
+}
