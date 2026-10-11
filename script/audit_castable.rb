@@ -5,10 +5,10 @@ Deck.load(ENV.fetch("DECK", Table::DECK)).entries.each do |e|
   g = t.game; pl = g.current_turn.active_player
   uid = t.seats.find { _1.player == pl }.uid
   %w[Plains Plains Plains Swamp Swamp Swamp Forest Forest Forest Forest Forest Forest Island Island Island Island Mountain Mountain Mountain Mountain].each do |n|
-    Magic::Permanent.resolve(game: g, card: Magic::Cards.const_get(n).new(game: g, owner: pl)).tap { |pm| pm.controlled_since_turn = 0; pm.untap! }
+    Magic::Permanent.resolve_spell(game: g, card: Magic::Cards.const_get(n).new(game: g, owner: pl)).tap { |pm| pm.controlled_since_turn = 0; pm.untap! }
   end
   # a creature to target
-  Magic::Permanent.resolve(game: g, card: Magic::Cards::LlanowarElves.new(game: g, owner: pl))
+  Magic::Permanent.resolve_spell(game: g, card: Magic::Cards::LlanowarElves.new(game: g, owner: pl))
   card = e.card_class.new(game: g, owner: pl)
   next if card.land?
   pl.hand.add(card)

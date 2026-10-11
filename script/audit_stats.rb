@@ -39,7 +39,7 @@ Deck.load(ENV.fetch("DECK", Table::DECK)).entries.each do |entry|
   problems << "cost #{actual_cost}, oracle #{oracle_cost.reject { |_, n| n.zero? }}" if !card.land? && actual_cost != oracle_cost.reject { |_, n| n.zero? }
   if expected["power"] || expected["loyalty"]
     # Power, toughness and loyalty belong to the permanent.
-    card = Magic::Permanent.resolve(game: game, card: card)
+    card = Magic::Permanent.resolve_spell(game: game, card: card)
   end
   # A "*" in the Oracle power or toughness is defined by the card's own text (Daxos), so it can't be compared.
   if expected["power"] && !(expected["power"] + expected["toughness"]).include?("*")

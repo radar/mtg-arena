@@ -14,7 +14,7 @@ class PromptsTest < ActiveSupport::TestCase
   end
 
   def put(card_class, owner = @player, summoning_sick: false)
-    permanent = Magic::Permanent.resolve(game: @game, card: card_class.new(game: @game, owner: owner))
+    permanent = Magic::Permanent.resolve_spell(game: @game, card: card_class.new(game: @game, owner: owner))
     permanent.controlled_since_turn = 0 unless summoning_sick
     permanent
   end
@@ -26,6 +26,126 @@ class PromptsTest < ActiveSupport::TestCase
   def choice = @table.view_for(@uid)[:choice]
 
   def ids(entries) = entries.map { |entry| entry[:id] }
+
+  test "Rootweaver Druid: the opponent picks three lands, then which one goes under the Druid's controller" do
+    druid = put(Magic::Cards::RootweaverDruid)
+    @game.settle! if @game.respond_to?(:settle!)
+    opponent_uid = @table.seats.find { |seat| seat.player == @opponent }.uid
+    opponent_choice = -> { @table.view_for(opponent_uid)[:choice] }
+
+    assert_equal "pick", opponent_choice.call[:kind]
+    assert_match(/up to three basic land cards/, opponent_choice.call[:prompt])
+    found = opponent_choice.call[:cards].first(3)
+    assert_nil @table.choose(opponent_uid, found.map { |card| card[:id] })
+
+    second = opponent_choice.call
+    assert_equal "pick", second[:kind]
+    assert_match(/which land goes onto the battlefield under #{@player.name}'s control/, second[:prompt])
+    assert_equal found.map { |card| card[:id] }.sort, second[:cards].map { |card| card[:id] }.sort
+    assert_empty @player.permanents.lands, "nothing is put onto the battlefield until they have picked"
+
+    assert_nil @table.choose(opponent_uid, [found.first[:id]])
+
+    assert_equal 1, @player.permanents.lands.count
+    assert_equal 2, @opponent.permanents.lands.count
+    assert_nil @table.view_for(opponent_uid)[:choice]
+    assert druid
+  end
+
+  test "a spell with an offspring cost asks whether to pay it, and pays for the token copy" do
+    4.times { put(Magic::Cards::Mountain) }
+    spell = Magic::Cards::AgateInstigator.new(game: @game, owner: @player)
+    @player.hand.add(spell)
+
+    assert_nil @table.cast(@uid, @player.hand.cards.index(spell))
+    assert_match(/offspring/i, choice[:prompt])
+    assert_equal %w[no yes], choice[:options].map { |option| option[:id] }
+    assert_match(/\{1\}\{R\}/, choice[:options].last[:label])
+
+    assert_nil @table.choose(@uid, ["yes"])
+
+    assert_nil choice
+    agates = @player.permanents.select { |permanent| permanent.name == "Agate Instigator" }
+    assert_equal 2, agates.size, "the creature and its token copy"
+    assert_equal 1, agates.count(&:token?)
+    assert_equal 4, @player.permanents.lands.count(&:tapped?), "both costs, {1}{R} each, were paid"
+  end
+
+  test "an offspring cost declined casts the creature alone" do
+    4.times { put(Magic::Cards::Mountain) }
+    spell = Magic::Cards::AgateInstigator.new(game: @game, owner: @player)
+    @player.hand.add(spell)
+
+    assert_nil @table.cast(@uid, @player.hand.cards.index(spell))
+    assert_nil @table.choose(@uid, ["no"])
+
+    assert_equal ["Agate Instigator"], @player.permanents.reject { |permanent| permanent.card.land? }.map(&:name)
+    assert_equal 2, @player.permanents.lands.count(&:tapped?)
+  end
+
+  test "with Zinnia, paying only the granted offspring pays {2}, not the card's own {1}{R}" do
+    put(Magic::Cards::ZinniaValleysVoice)
+    4.times { put(Magic::Cards::Forest) }
+    spell = Magic::Cards::AgateInstigator.new(game: @game, owner: @player)
+    @player.hand.add(spell)
+    # Only one red source: the spell's own {R} is the only red mana there is, so the card's own offspring {1}{R} can't be paid.
+    put(Magic::Cards::Mountain)
+
+    assert_nil @table.cast(@uid, @player.hand.cards.index(spell))
+    # The card's own offspring isn't affordable and is skipped without a question, so the granted cost is the one asked.
+    assert_match(/2 of 2/, choice[:prompt])
+    assert_match(/\{2\}/, choice[:options].last[:label])
+    assert_nil @table.choose(@uid, ["yes"])
+
+    agates = @player.permanents.select { |permanent| permanent.name == "Agate Instigator" }
+    assert_equal 2, agates.size
+    assert_equal 1, agates.count(&:token?)
+    assert_equal 4, @player.permanents.lands.count(&:tapped?), "{1}{R} for the spell and {2} for the granted offspring"
+  end
+
+  test "an offspring cost that can't be afforded isn't asked about" do
+    2.times { put(Magic::Cards::Mountain) }
+    spell = Magic::Cards::AgateInstigator.new(game: @game, owner: @player)
+    @player.hand.add(spell)
+
+    assert_nil @table.cast(@uid, @player.hand.cards.index(spell))
+
+    assert_nil choice
+    assert_equal ["Agate Instigator"], @player.permanents.reject { |permanent| permanent.card.land? }.map(&:name)
+  end
+
+  test "a spell's choices say whether each thing is the chooser's or the opponent's" do
+    2.times { put(Magic::Cards::Swamp) }
+    4.times { put(Magic::Cards::Forest) }
+    mine = put(Magic::Cards::Forest)
+    theirs = put(Magic::Cards::Forest, @opponent)
+    spell = Magic::Cards::CasualtiesOfWar.new(game: @game, owner: @player)
+    @player.hand.add(spell)
+
+    assert_nil @table.cast(@uid, @player.hand.cards.index(spell))
+    land_mode = choice[:options].find { |option| option[:label] =~ /land/i }
+    assert_nil @table.choose(@uid, [land_mode[:id]])
+
+    cards = choice[:cards]
+    assert_equal "pick", choice[:kind]
+    assert_equal "yours", cards.find { |card| card[:id] == mine.object_id.to_s }[:side]
+    assert_equal "opponent's", cards.find { |card| card[:id] == theirs.object_id.to_s }[:side]
+  end
+
+  test "a target on the board is labelled yours or opponent's" do
+    lands(Magic::Cards::Forest, 2)
+    mine = put(Magic::Cards::GrizzlyBears)
+    theirs = put(Magic::Cards::GrizzlyBears, @opponent)
+    spell = Magic::Cards::SarkhansResolve.new(game: @game, owner: @player)
+    @player.hand.add(spell)
+
+    assert_nil @table.cast(@uid, @player.hand.cards.index(spell))
+    assert_nil @table.choose(@uid, [choice[:options].first[:id]])
+
+    labels = choice[:targets].to_h { |target| [target[:id], target[:label]] }
+    assert_equal "Grizzly Bears (yours)", labels[mine.object_id.to_s]
+    assert_equal "Grizzly Bears (opponent's)", labels[theirs.object_id.to_s]
+  end
 
   test "a choice with two questions asks them one after the other, skipping one with nothing to pick" do
     lands(Magic::Cards::Forest, 3)
@@ -150,6 +270,13 @@ class PromptsTest < ActiveSupport::TestCase
     assert_match(/can't be activated/, @table.activate_from_graveyard(@uid, crown.object_id, 0))
   end
 
+  test "a choice's own prompt is prefixed with the card it came from" do
+    composer = put(Magic::Cards::ComposerOfSpring)
+    @game.choices.add(Magic::Cards::ComposerOfSpring::LandChoice.new(actor: composer))
+
+    assert_equal "Composer of Spring: Put a land card from your hand onto the battlefield tapped?", choice[:prompt]
+  end
+
   test "'you may pay {G}' taps a land for the payment" do
     visionary = put(Magic::Cards::LeafCrownedVisionary)
     forest = put(Magic::Cards::Forest)
@@ -161,6 +288,19 @@ class PromptsTest < ActiveSupport::TestCase
 
     assert forest.tapped?
     assert_equal hand + 1, @player.hand.count
+  end
+
+  test "casting an Elf pays generic with off-colour lands, leaving a Forest open for Leaf-Crowned Visionary" do
+    put(Magic::Cards::LeafCrownedVisionary)
+    2.times { put(Magic::Cards::Island) }
+    4.times { put(Magic::Cards::Forest) }
+    spell = Magic::Cards::SylvanMessenger.new(game: @game, owner: @player)
+    @player.hand.add(spell)
+
+    assert_nil @table.cast(@uid, @player.hand.cards.index(spell))
+
+    assert_equal "may", choice[:kind]
+    assert_match(/Pay \{G\}/, choice[:prompt])
   end
 
   test "'you may pay {X}{X}' asks for X, pays it, and asks how to distribute the counters" do
@@ -278,6 +418,32 @@ class PromptsTest < ActiveSupport::TestCase
 
     assert_nil @table.choose(@uid, [])
     assert_equal hand, @player.hand.count
+  end
+
+  test "The Gitrog Monster's upkeep asks which land to sacrifice, and the pick is the one sacrificed" do
+    gitrog = put(Magic::Cards::TheGitrogMonster)
+    forest, island = put(Magic::Cards::Forest), put(Magic::Cards::Island)
+    @game.choices.add(Magic::Cards::TheGitrogMonster::SacrificeLandChoice.new(actor: gitrog))
+
+    assert_equal "pick", choice[:kind]
+    assert_equal [0, 1], choice.values_at(:min, :max)
+    assert_equal [forest, island].map { ChoicePrompt.target_id(_1) }.sort, ids(choice[:cards]).sort
+    assert_nil @table.choose(@uid, [ChoicePrompt.target_id(island)])
+
+    assert_includes @player.permanents, gitrog
+    assert_includes @player.permanents, forest
+    refute_includes @player.permanents, island
+  end
+
+  test "picking no land for The Gitrog Monster sacrifices it" do
+    gitrog = put(Magic::Cards::TheGitrogMonster)
+    forest = put(Magic::Cards::Forest)
+    @game.choices.add(Magic::Cards::TheGitrogMonster::SacrificeLandChoice.new(actor: gitrog))
+
+    assert_nil @table.choose(@uid, [])
+
+    refute_includes @player.permanents, gitrog
+    assert_includes @player.permanents, forest
   end
 
   test "X for a spell that targets a creature with mana value X only offers the X that has one" do

@@ -26,7 +26,7 @@ Deck.load(ENV.fetch("DECK", Table::DECK)).entries.each do |e|
     f << "planeswalker" if card.respond_to?(:planeswalker?) && card.planeswalker?
     f << "creature" if card.creature?
     # permanent-level things
-    perm = (Magic::Permanent.resolve(game: g, card: card) rescue nil)
+    perm = (Magic::Permanent.resolve_spell(game: g, card: card) rescue nil)
     if perm
       perm.controlled_since_turn = 0
       abilities = perm.activated_abilities.reject { |a| a.is_a?(Magic::ManaAbility) }

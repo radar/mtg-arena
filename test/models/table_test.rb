@@ -71,7 +71,7 @@ class TableTest < ActiveSupport::TestCase
     2.times do
       forest = player.library.cards.find { |c| c.name == "Forest" }
       forest.move_to_hand!(player)
-      Magic::Permanent.resolve(game: table.game, card: forest)
+      Magic::Permanent.resolve_spell(game: table.game, card: forest)
     end
     castable = table.view_for(uid)[:you][:hand].find { |c| c[:name] == "Grizzly Bears" }[:castable]
     assert castable
@@ -93,10 +93,25 @@ class TableTest < ActiveSupport::TestCase
     assert_not table.view_for(uid)[:can_play_land]
   end
 
+  test "a land with two mana abilities offers every colour and taps for the one chosen" do
+    table = started_table
+    player = table.game.current_turn.active_player
+    uid = table.seats.find { |s| s.player == player }.uid
+    springs = Magic::Permanent.resolve_spell(game: table.game, card: Magic::Cards::SulfurousSprings.new(game: table.game, owner: player))
+    springs.controlled_since_turn = 0
+
+    view = table.view_for(uid)[:you][:battlefield].find { |p| p[:id] == springs.object_id }
+    assert_equal %w[colorless black red], view[:mana_colors]
+
+    assert_nil table.tap_for_mana_by_hand(uid, springs.object_id, "red")
+    assert_equal 1, player.mana_pool[:red]
+    assert_equal 19, player.life
+  end
+
   def put_bear(table, player)
     card = player.library.cards.find { |c| c.name == "Grizzly Bears" || c.name == "Goblin Arsonist" }
     card.move_to_hand!(player)
-    Magic::Permanent.resolve(game: table.game, card: card).tap { |perm| perm.controlled_since_turn = 0 }
+    Magic::Permanent.resolve_spell(game: table.game, card: card).tap { |perm| perm.controlled_since_turn = 0 }
   end
 
   test "combat: attack, block, damage" do
@@ -153,7 +168,7 @@ class TableTest < ActiveSupport::TestCase
     other = table.game.opponents(active).first
     uid = table.seats.find { |s| s.player == active }.uid
     other_uid = table.seats.find { |s| s.player == other }.uid
-    arsonist = Magic::Permanent.resolve(game: table.game, card: Magic::Cards::GoblinArsonist.new(game: table.game, owner: active))
+    arsonist = Magic::Permanent.resolve_spell(game: table.game, card: Magic::Cards::GoblinArsonist.new(game: table.game, owner: active))
     arsonist.destroy!
     table.game.settle!
 
@@ -179,7 +194,7 @@ class TableTest < ActiveSupport::TestCase
     table = started_table
     active = table.game.current_turn.active_player
     uid = table.seats.find { |s| s.player == active }.uid
-    Magic::Permanent.resolve(game: table.game, card: Magic::Cards::GoblinArsonist.new(game: table.game, owner: active)).destroy!
+    Magic::Permanent.resolve_spell(game: table.game, card: Magic::Cards::GoblinArsonist.new(game: table.game, owner: active)).destroy!
     table.game.settle!
 
     assert_nil table.choose(uid, "no")
@@ -322,7 +337,7 @@ class TableTest < ActiveSupport::TestCase
     uid = table.seats.find { |s| s.player == player }.uid
     ["Sungrass Prairie", "Swamp", "Plains"].each do |name|
       card = Magic::Cards.const_get(name.delete(" ")).new(game: game, owner: player)
-      Magic::Permanent.resolve(game: game, card: card).controlled_since_turn = 0
+      Magic::Permanent.resolve_spell(game: game, card: card).controlled_since_turn = 0
     end
     spell = Magic::Cards::Arachnogenesis.new(game: game, owner: player)
     player.hand.add(spell)
@@ -330,6 +345,26 @@ class TableTest < ActiveSupport::TestCase
     assert table.view_for(uid)[:you][:hand].find { |c| c[:name] == "Arachnogenesis" }[:castable]
     assert_nil table.cast(uid, player.hand.cards.index(spell))
     assert_includes player.graveyard.cards, spell
+  end
+
+  test "two filter lands chain off one Mountain: Mountain, Sunscorched Divide, Cascade Bluffs make Chart a Course castable" do
+    table = Table.new("t", deck: Deck.new("x", "40 Forest (X) 1\n"))
+    table.join("a")
+    table.join("b")
+    game = table.game
+    player = game.current_turn.active_player
+    uid = table.seats.find { |s| s.player == player }.uid
+    ["Mountain", "Sunscorched Divide", "Cascade Bluffs"].each do |name|
+      card = Magic::Cards.const_get(name.delete(" ")).new(game: game, owner: player)
+      Magic::Permanent.resolve_spell(game: game, card: card).controlled_since_turn = 0
+    end
+    spell = Magic::Cards::ChartACourse.new(game: game, owner: player)
+    player.hand.add(spell)
+
+    assert table.view_for(uid)[:you][:hand].find { |c| c[:name] == "Chart a Course" }[:castable]
+    assert_nil table.cast(uid, player.hand.cards.index(spell))
+    game.settle!
+    assert_includes player.graveyard.map(&:name), "Chart a Course"
   end
 
   test "a hybrid-cost filter land (Cascade Bluffs) is tapped for mana, paying with the pool" do
@@ -341,7 +376,7 @@ class TableTest < ActiveSupport::TestCase
     uid = table.seats.find { |s| s.player == player }.uid
     ["Cascade Bluffs", "Mountain", "Mountain"].each do |name|
       card = Magic::Cards.const_get(name.delete(" ")).new(game: game, owner: player)
-      Magic::Permanent.resolve(game: game, card: card).controlled_since_turn = 0
+      Magic::Permanent.resolve_spell(game: game, card: card).controlled_since_turn = 0
     end
     spell = Magic::Cards::DualcasterMage.new(game: game, owner: player)
     player.hand.add(spell)
@@ -365,6 +400,22 @@ class TableTest < ActiveSupport::TestCase
     assert_equal [{ name: "+1/+1", count: 2 }, { name: "quest", count: 1 }], view[:counters].sort_by { |c| c[:name] }
   end
 
+  test "lore counters are shown on a Saga but not once it has flipped" do
+    table = started_table
+    game = table.game
+    player = game.current_turn.active_player
+    uid = table.seats.find { |s| s.player == player }.uid
+    saga = Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::AzusasManyJourneys.new(game: game, owner: player))
+    game.settle!
+
+    counters = -> { table.view_for(uid)[:you][:battlefield].find { |p| p[:id] == saga.object_id }[:counters] }
+    assert_equal [{ name: "lore", count: 1 }], counters.call
+
+    Magic::Cards::AzusasManyJourneys::Chapter3.new(actor: saga).resolve!
+    assert_equal "Likeness of the Seeker", saga.name
+    assert_empty counters.call
+  end
+
   test "fixed-mana lands like Selesnya Sanctuary count towards a spell's cost" do
     table = Table.new("t", deck: Deck.new("x", "40 Forest (X) 1\n"))
     table.join("a")
@@ -373,7 +424,7 @@ class TableTest < ActiveSupport::TestCase
     player = game.current_turn.active_player
     uid = table.seats.find { |s| s.player == player }.uid
     %w[SelesnyaSanctuary Forest Swamp].each do |name|
-      Magic::Permanent.resolve(game: game, card: Magic::Cards.const_get(name).new(game: game, owner: player)).tap do |permanent|
+      Magic::Permanent.resolve_spell(game: game, card: Magic::Cards.const_get(name).new(game: game, owner: player)).tap do |permanent|
         permanent.controlled_since_turn = 0
         permanent.untap!
       end
@@ -396,7 +447,7 @@ class TableTest < ActiveSupport::TestCase
     player = game.current_turn.active_player
     uid = table.seats.find { |s| s.player == player }.uid
     %w[ExoticOrchard Forest Forest].each do |name|
-      Magic::Permanent.resolve(game: game, card: Magic::Cards.const_get(name).new(game: game, owner: player)).controlled_since_turn = 0
+      Magic::Permanent.resolve_spell(game: game, card: Magic::Cards.const_get(name).new(game: game, owner: player)).controlled_since_turn = 0
     end
     spell = Magic::Cards::Farseek.new(game: game, owner: player)
     player.hand.add(spell)
@@ -411,7 +462,7 @@ class TableTest < ActiveSupport::TestCase
     game = table.game
     player = game.current_turn.active_player
     uid = table.seats.find { |s| s.player == player }.uid
-    wilds = Magic::Permanent.resolve(game: game, card: Magic::Cards::EvolvingWilds.new(game: game, owner: player))
+    wilds = Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::EvolvingWilds.new(game: game, owner: player))
     wilds.controlled_since_turn = 0
 
     view = table.view_for(uid)[:you][:battlefield].find { |p| p[:id] == wilds.object_id }
@@ -427,6 +478,31 @@ class TableTest < ActiveSupport::TestCase
     assert_equal 1, game.battlefield.permanents.controlled_by(player).count
   end
 
+  test "a permanent that is indestructible says so, however it got to be, and stops when that ends" do
+    table = Table.new("t", deck: Deck.new("x", "40 Forest (X) 1\n"))
+    table.join("a")
+    table.join("b")
+    game = table.game
+    player = game.current_turn.active_player
+    uid = table.seats.find { |s| s.player == player }.uid
+    colossus = Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::DarksteelColossus.new(game: game, owner: player))
+    bears = Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::GrizzlyBears.new(game: game, owner: player))
+    indestructible = lambda do |permanent|
+      table.view_for(uid)[:you][:battlefield].find { |p| p[:id] == permanent.object_id }[:indestructible]
+    end
+
+    assert indestructible.call(colossus), "its own keyword"
+    assert_not indestructible.call(bears)
+
+    bears.grant_keyword(Magic::Keywords::INDESTRUCTIBLE, until_eot: true)
+    game.tick!
+    assert indestructible.call(bears), "granted until end of turn"
+
+    bears.cleanup!
+    game.tick!
+    assert_not indestructible.call(bears)
+  end
+
   test "a planeswalker's loyalty abilities are offered and can be activated" do
     table = Table.new("t", deck: Deck.new("x", "40 Forest (X) 1\n"))
     table.join("a")
@@ -434,14 +510,18 @@ class TableTest < ActiveSupport::TestCase
     game = table.game
     player = game.current_turn.active_player
     uid = table.seats.find { |s| s.player == player }.uid
-    calix = Magic::Permanent.resolve(game: game, card: Magic::Cards::CalixDestinysHand.new(game: game, owner: player))
+    calix = Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::CalixDestinysHand.new(game: game, owner: player))
 
     view = table.view_for(uid)[:you][:battlefield].find { |p| p[:id] == calix.object_id }
     assert_equal [true, false, false], view[:abilities].map { |a| a[:activatable] }
-    assert_equal "[+1]: Loyalty Ability1", view[:abilities].first[:label]
+    assert_equal "[+1]: Look at the top four cards of your library. You may reveal an enchantment card from among them and put that card into your hand. Put the rest on the bottom of your library in a random order.",
+                 view[:abilities].first[:label]
+    assert_equal 4, view[:loyalty]
 
     assert_nil table.activate(uid, calix.object_id, 0)
     assert_equal 5, calix.loyalty
+    assert_equal 5, table.view_for(uid)[:you][:battlefield].find { |p| p[:id] == calix.object_id }[:loyalty]
+    assert_nil table.view_for(uid)[:you][:battlefield].find { |p| p[:land] }&.fetch(:loyalty)
     assert_match(/can't be activated/, table.activate(uid, calix.object_id, 0))
   end
 
@@ -453,14 +533,14 @@ class TableTest < ActiveSupport::TestCase
     player = game.current_turn.active_player
     opponent = game.players.find { |p| p != player }
     uid = table.seats.find { |s| s.player == player }.uid
-    calix = Magic::Permanent.resolve(game: game, card: Magic::Cards::CalixDestinysHand.new(game: game, owner: player))
+    calix = Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::CalixDestinysHand.new(game: game, owner: player))
     calix.change_loyalty!(0)
-    victim = Magic::Permanent.resolve(game: game, card: Magic::Cards::LlanowarElves.new(game: game, owner: opponent))
+    victim = Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::LlanowarElves.new(game: game, owner: opponent))
 
     view = table.view_for(uid)[:you][:battlefield].find { |p| p[:id] == calix.object_id }
     assert_not view[:abilities][1][:activatable], "the -3 needs an enchantment of yours to be linked to"
 
-    anthem = Magic::Permanent.resolve(game: game, card: Magic::Cards::GloriousAnthem.new(game: game, owner: player))
+    anthem = Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::GloriousAnthem.new(game: game, owner: player))
     view = table.view_for(uid)[:you][:battlefield].find { |p| p[:id] == calix.object_id }
     assert view[:abilities][1][:activatable]
 
@@ -496,7 +576,7 @@ class TableTest < ActiveSupport::TestCase
     game = table.game
     player = game.current_turn.active_player
     uid = table.seats.find { |s| s.player == player }.uid
-    2.times { Magic::Permanent.resolve(game: game, card: Magic::Cards::Plains.new(game: game, owner: player)).tap { |pm| pm.controlled_since_turn = 0 } }
+    2.times { Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::Plains.new(game: game, owner: player)).tap { |pm| pm.controlled_since_turn = 0 } }
     card = Magic::Cards::EtherealArmor.new(game: game, owner: player)
     player.hand.add(card)
     index = player.hand.cards.index(card)
@@ -504,7 +584,7 @@ class TableTest < ActiveSupport::TestCase
     assert_not table.view_for(uid)[:you][:hand][index][:castable]
     assert_match(/no legal target/, table.cast(uid, index))
 
-    bear = Magic::Permanent.resolve(game: game, card: Magic::Cards::LlanowarElves.new(game: game, owner: player))
+    bear = Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::LlanowarElves.new(game: game, owner: player))
     assert table.view_for(uid)[:you][:hand][index][:castable]
     assert_nil table.cast(uid, index)
     choice = table.view_for(uid)[:choice]
@@ -530,13 +610,13 @@ class TableTest < ActiveSupport::TestCase
     game = table.game
     player = game.current_turn.active_player
     uid = table.seats.find { |s| s.player == player }.uid
-    3.times { Magic::Permanent.resolve(game: game, card: Magic::Cards::Forest.new(game: game, owner: player)).tap { |pm| pm.controlled_since_turn = 0 } }
-    demon = Magic::Permanent.resolve(game: game, card: Magic::Cards::NyxbornBehemoth.new(game: game, owner: player))
+    3.times { Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::Forest.new(game: game, owner: player)).tap { |pm| pm.controlled_since_turn = 0 } }
+    demon = Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::NyxbornBehemoth.new(game: game, owner: player))
     demon.controlled_since_turn = 0
     ability = ->(table) { table.view_for(uid)[:you][:battlefield].find { |p| p[:id] == demon.object_id }[:abilities].first }
 
     assert_not ability.call(table)[:activatable], "the behemoth can't sacrifice itself"
-    elves = Magic::Permanent.resolve(game: game, card: Magic::Cards::GloriousAnthem.new(game: game, owner: player))
+    elves = Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::GloriousAnthem.new(game: game, owner: player))
     assert ability.call(table)[:activatable]
 
     assert_nil table.activate(uid, demon.object_id, 0)
@@ -555,6 +635,36 @@ class TableTest < ActiveSupport::TestCase
     assert_not_includes game.battlefield.permanents, elves
   end
 
+  test "a Spacecraft is stationed by tapping a chosen creature, and shows its charge counters" do
+    table = Table.new("t", deck: Deck.new("x", "40 Forest (X) 1\n"))
+    table.join("a")
+    table.join("b")
+    game = table.game
+    player = game.current_turn.active_player
+    uid = table.seats.find { |s| s.player == player }.uid
+    ship = Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::ExplorationBroodship.new(game: game, owner: player))
+    bears = Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::GrizzlyBears.new(game: game, owner: player))
+    bears.controlled_since_turn = game.current_turn.number
+    ability = ->(table) { table.view_for(uid)[:you][:battlefield].find { |p| p[:id] == ship.object_id }[:abilities].first }
+
+    assert_equal "Tap a creature: Station", ability.call(table)[:label]
+    assert ability.call(table)[:activatable]
+
+    assert_nil table.activate(uid, ship.object_id, 0)
+    choice = table.view_for(uid)[:choice]
+    assert_equal "pick", choice[:kind]
+    assert_match(/Choose a creature to tap/, choice[:prompt])
+    assert_equal [bears.object_id.to_s], choice[:cards].map { |c| c[:id] }
+
+    assert_nil table.choose(uid, [bears.object_id.to_s])
+    game.stack.resolve!
+
+    assert bears.tapped?
+    assert_equal 2, ship.charge_counters
+    counter = table.view_for(uid)[:you][:battlefield].find { |p| p[:id] == ship.object_id }[:counters].first
+    assert_equal({ name: "charge", count: 2, of: 3 }, counter)
+  end
+
   test "a card with cycling can be cycled from the hand for its cost" do
     table = Table.new("t", deck: Deck.new("x", "40 Forest (X) 1\n"))
     table.join("a")
@@ -569,12 +679,39 @@ class TableTest < ActiveSupport::TestCase
     assert_not table.view_for(uid)[:you][:hand][index][:cyclable]
     assert_match(/Not enough mana/, table.cycle(uid, index))
 
-    3.times { Magic::Permanent.resolve(game: game, card: Magic::Cards::Forest.new(game: game, owner: player)).tap { |pm| pm.controlled_since_turn = 0 } }
+    3.times { Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::Forest.new(game: game, owner: player)).tap { |pm| pm.controlled_since_turn = 0 } }
     assert table.view_for(uid)[:you][:hand][index][:cyclable]
     hand_size = player.hand.count
     assert_nil table.cycle(uid, index)
     assert_includes player.graveyard.cards, triome
     assert_equal hand_size, player.hand.count
+  end
+
+  test "Boseiju's Channel is activated from the hand, choosing a target" do
+    table = Table.new("t", deck: Deck.new("x", "40 Forest (X) 1\n"))
+    table.join("a")
+    table.join("b")
+    game = table.game
+    player = game.current_turn.active_player
+    opponent = game.players.find { |p| p != player }
+    uid = table.seats.find { |s| s.player == player }.uid
+    boseiju = Magic::Cards::BoseijuWhoEndures.new(game: game, owner: player)
+    player.hand.add(boseiju)
+    index = player.hand.cards.index(boseiju)
+    target = Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::BoseijuWhoEndures.new(game: game, owner: opponent))
+
+    assert_not table.view_for(uid)[:you][:hand][index][:abilities].first[:activatable]
+    assert_match(/can't be activated/, table.activate_from_hand(uid, index, 0))
+
+    2.times { Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::Forest.new(game: game, owner: player)).tap { |pm| pm.controlled_since_turn = 0 } }
+    assert table.view_for(uid)[:you][:hand][index][:abilities].first[:activatable]
+
+    assert_nil table.activate_from_hand(uid, index, 0)
+    assert_nil table.choose(uid, [ChoicePrompt.target_id(target)])
+    game.stack.resolve!
+
+    assert_not_includes opponent.permanents, target
+    assert_includes player.graveyard.cards, boseiju
   end
 
   test "attackers can be sent at an opposing planeswalker" do
@@ -585,8 +722,8 @@ class TableTest < ActiveSupport::TestCase
     player = game.current_turn.active_player
     opponent = game.players.find { |p| p != player }
     uid = table.seats.find { |s| s.player == player }.uid
-    calix = Magic::Permanent.resolve(game: game, card: Magic::Cards::CalixDestinysHand.new(game: game, owner: opponent))
-    bear = Magic::Permanent.resolve(game: game, card: Magic::Cards::LlanowarElves.new(game: game, owner: player))
+    calix = Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::CalixDestinysHand.new(game: game, owner: opponent))
+    bear = Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::LlanowarElves.new(game: game, owner: player))
     bear.controlled_since_turn = 0
     bear.untap!
     table.advance_step(uid) until game.current_turn.step == "declare_attackers"
@@ -610,12 +747,12 @@ class TableTest < ActiveSupport::TestCase
     player = game.current_turn.active_player
     opponent = game.players.find { |p| p != player }
     uid = table.seats.find { |s| s.player == player }.uid
-    rhetoric = Magic::Permanent.resolve(game: game, card: Magic::Cards::CunningRhetoric.new(game: game, owner: player))
+    rhetoric = Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::CunningRhetoric.new(game: game, owner: player))
     bears = Magic::Cards::GrizzlyBears.new(game: game, owner: opponent)
     opponent.library.add(bears)
     rhetoric.exiled_cards << bears
     bears.exile!
-    2.times { Magic::Permanent.resolve(game: game, card: Magic::Cards::Forest.new(game: game, owner: player)).tap { |pm| pm.controlled_since_turn = 0 } }
+    2.times { Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::Forest.new(game: game, owner: player)).tap { |pm| pm.controlled_since_turn = 0 } }
 
     entry = table.view_for(uid)[:exile].find { |c| c[:name] == "Grizzly Bears" }
     assert entry[:castable]
@@ -633,7 +770,7 @@ class TableTest < ActiveSupport::TestCase
     opponent = game.players.find { |p| p != player }
     uid = table.seats.find { |s| s.player == player }.uid
     opp_uid = table.seats.find { |s| s.player == opponent }.uid
-    land = ->(owner, card_class) { Magic::Permanent.resolve(game: game, card: card_class.new(game: game, owner: owner)).tap { |pm| pm.controlled_since_turn = 0 } }
+    land = ->(owner, card_class) { Magic::Permanent.resolve_spell(game: game, card: card_class.new(game: game, owner: owner)).tap { |pm| pm.controlled_since_turn = 0 } }
     2.times { land.call(player, Magic::Cards::Forest) }
     bears = Magic::Cards::GrizzlyBears.new(game: game, owner: player)
     player.hand.add(bears)
@@ -669,7 +806,7 @@ class TableTest < ActiveSupport::TestCase
     game = table.game
     player = game.current_turn.active_player
     uid = table.seats.find { |s| s.player == player }.uid
-    Magic::Permanent.resolve(game: game, card: Magic::Cards::DemonOfFatesDesign.new(game: game, owner: player)).controlled_since_turn = 0
+    Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::DemonOfFatesDesign.new(game: game, owner: player)).controlled_since_turn = 0
     first = Magic::Cards::SanctumOfCalmWaters.new(game: game, owner: player)
     second = Magic::Cards::SanctumOfCalmWaters.new(game: game, owner: player)
     player.hand.add(first)
@@ -692,8 +829,8 @@ class TableTest < ActiveSupport::TestCase
     game = table.game
     player = game.current_turn.active_player
     uid = table.seats.find { |s| s.player == player }.uid
-    Magic::Permanent.resolve(game: game, card: Magic::Cards::DemonOfFatesDesign.new(game: game, owner: player)).controlled_since_turn = 0
-    4.times { Magic::Permanent.resolve(game: game, card: Magic::Cards::Island.new(game: game, owner: player)).tap { |pm| pm.controlled_since_turn = 0 } }
+    Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::DemonOfFatesDesign.new(game: game, owner: player)).controlled_since_turn = 0
+    4.times { Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::Island.new(game: game, owner: player)).tap { |pm| pm.controlled_since_turn = 0 } }
     card = Magic::Cards::SanctumOfCalmWaters.new(game: game, owner: player)
     player.hand.add(card)
     index = player.hand.cards.index(card)
@@ -722,8 +859,8 @@ class TableTest < ActiveSupport::TestCase
     opponent = game.players.find { |p| p != player }
     uid = table.seats.find { |s| s.player == player }.uid
     opp_uid = table.seats.find { |s| s.player == opponent }.uid
-    Magic::Permanent.resolve(game: game, card: Magic::Cards::Plains.new(game: game, owner: player)).controlled_since_turn = 0
-    victim = Magic::Permanent.resolve(game: game, card: Magic::Cards::LlanowarElves.new(game: game, owner: opponent))
+    Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::Plains.new(game: game, owner: player)).controlled_since_turn = 0
+    victim = Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::LlanowarElves.new(game: game, owner: opponent))
     path = Magic::Cards::PathToExile.new(game: game, owner: player)
     player.hand.add(path)
 
@@ -742,7 +879,7 @@ class TableTest < ActiveSupport::TestCase
     game = table.game
     player = game.current_turn.active_player
     uid = table.seats.find { |s| s.player == player }.uid
-    4.times { Magic::Permanent.resolve(game: game, card: Magic::Cards::Swamp.new(game: game, owner: player)).tap { |pm| pm.controlled_since_turn = 0 } }
+    4.times { Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::Swamp.new(game: game, owner: player)).tap { |pm| pm.controlled_since_turn = 0 } }
     spell = Magic::Cards::BeseechTheMirror.new(game: game, owner: player)
     player.hand.add(spell)
     index = player.hand.cards.index(spell)
@@ -759,9 +896,9 @@ class TableTest < ActiveSupport::TestCase
     game = table.game
     player = game.current_turn.active_player
     uid = table.seats.find { |s| s.player == player }.uid
-    4.times { Magic::Permanent.resolve(game: game, card: Magic::Cards::Swamp.new(game: game, owner: player)).tap { |pm| pm.controlled_since_turn = 0 } }
-    anthem = Magic::Permanent.resolve(game: game, card: Magic::Cards::GloriousAnthem.new(game: game, owner: player))
-    Magic::Permanent.resolve(game: game, card: Magic::Cards::LlanowarElves.new(game: game, owner: player))
+    4.times { Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::Swamp.new(game: game, owner: player)).tap { |pm| pm.controlled_since_turn = 0 } }
+    anthem = Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::GloriousAnthem.new(game: game, owner: player))
+    Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::LlanowarElves.new(game: game, owner: player))
     spell = Magic::Cards::BeseechTheMirror.new(game: game, owner: player)
     player.hand.add(spell)
     index = player.hand.cards.index(spell)
@@ -790,8 +927,8 @@ class TableTest < ActiveSupport::TestCase
     game = table.game
     player = game.current_turn.active_player
     uid = table.seats.find { |s| s.player == player }.uid
-    4.times { Magic::Permanent.resolve(game: game, card: Magic::Cards::Swamp.new(game: game, owner: player)).tap { |pm| pm.controlled_since_turn = 0 } }
-    anthem = Magic::Permanent.resolve(game: game, card: Magic::Cards::GloriousAnthem.new(game: game, owner: player))
+    4.times { Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::Swamp.new(game: game, owner: player)).tap { |pm| pm.controlled_since_turn = 0 } }
+    anthem = Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::GloriousAnthem.new(game: game, owner: player))
     spell = Magic::Cards::BeseechTheMirror.new(game: game, owner: player)
     player.hand.add(spell)
     mind_stone = Magic::Cards::MindStone.new(game: game, owner: player)
@@ -873,9 +1010,9 @@ class TableTest < ActiveSupport::TestCase
     opponent = game.players.find { |p| p != player }
     uid = table.seats.find { |s| s.player == player }.uid
     opp_uid = table.seats.find { |s| s.player == opponent }.uid
-    attacker = Magic::Permanent.resolve(game: game, card: Magic::Cards::GrizzlyBears.new(game: game, owner: player))
-    elf = Magic::Permanent.resolve(game: game, card: Magic::Cards::LlanowarElves.new(game: game, owner: opponent))
-    bears = Magic::Permanent.resolve(game: game, card: Magic::Cards::GrizzlyBears.new(game: game, owner: opponent))
+    attacker = Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::GrizzlyBears.new(game: game, owner: player))
+    elf = Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::LlanowarElves.new(game: game, owner: opponent))
+    bears = Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::GrizzlyBears.new(game: game, owner: opponent))
     [attacker, elf, bears].each { |pm| pm.controlled_since_turn = 0 }
     table.advance_step(uid) until game.current_turn.step == "declare_attackers"
 
@@ -914,9 +1051,9 @@ class TableTest < ActiveSupport::TestCase
     player = game.current_turn.active_player
     opponent = game.players.find { |p| p != player }
     uid = table.seats.find { |s| s.player == player }.uid
-    2.times { Magic::Permanent.resolve(game: game, card: Magic::Cards::Forest.new(game: game, owner: player)).controlled_since_turn = 0 }
-    mine = Magic::Permanent.resolve(game: game, card: Magic::Cards::LlanowarElves.new(game: game, owner: player))
-    theirs = Magic::Permanent.resolve(game: game, card: Magic::Cards::WoodElves.new(game: game, owner: opponent))
+    2.times { Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::Forest.new(game: game, owner: player)).controlled_since_turn = 0 }
+    mine = Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::LlanowarElves.new(game: game, owner: player))
+    theirs = Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::WoodElves.new(game: game, owner: opponent))
     bite = Magic::Cards::BiteDown.new(game: game, owner: player)
     player.hand.add(bite)
 
@@ -944,8 +1081,8 @@ class TableTest < ActiveSupport::TestCase
     game = table.game
     player = game.current_turn.active_player
     uid = table.seats.find { |s| s.player == player }.uid
-    2.times { Magic::Permanent.resolve(game: game, card: Magic::Cards::Forest.new(game: game, owner: player)).controlled_since_turn = 0 }
-    bears = Magic::Permanent.resolve(game: game, card: Magic::Cards::GrizzlyBears.new(game: game, owner: player))
+    2.times { Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::Forest.new(game: game, owner: player)).controlled_since_turn = 0 }
+    bears = Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::GrizzlyBears.new(game: game, owner: player))
     spell = Magic::Cards::SarkhansResolve.new(game: game, owner: player)
     player.hand.add(spell)
 
@@ -986,7 +1123,7 @@ class TableTest < ActiveSupport::TestCase
     opponent = game.players.find { |p| p != player }
     uid = table2.seats.find { |s| s.player == player }.uid
     opp_uid = table2.seats.find { |s| s.player == opponent }.uid
-    Magic::Permanent.resolve(game: game, card: Magic::Cards::Mountain.new(game: game, owner: opponent)).controlled_since_turn = 0
+    Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::Mountain.new(game: game, owner: opponent)).controlled_since_turn = 0
     opponent.hand.add(Magic::Cards::LightningBolt.new(game: game, owner: opponent))
 
     table2.advance_step(uid) until game.current_turn.step == "second_main"
@@ -1008,7 +1145,7 @@ class TableTest < ActiveSupport::TestCase
     game = table.game
     player = game.current_turn.active_player
     uid = table.seats.find { |s| s.player == player }.uid
-    wilds = Magic::Permanent.resolve(game: game, card: Magic::Cards::EvolvingWilds.new(game: game, owner: player))
+    wilds = Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::EvolvingWilds.new(game: game, owner: player))
     wilds.controlled_since_turn = 0
     wilds.tap!
 
@@ -1042,7 +1179,7 @@ class TableTest < ActiveSupport::TestCase
     assert_nil table.view_for(uid)[:you][:library_top]
     assert_nil table.view_for(other_uid)[:opponent][:library_top]
 
-    Magic::Permanent.resolve(game: game, card: Magic::Cards::CourserOfKruphix.new(game: game, owner: player))
+    Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::CourserOfKruphix.new(game: game, owner: player))
     game.settle!
     top = player.library.first
 
@@ -1065,8 +1202,8 @@ class TableTest < ActiveSupport::TestCase
 
     assert_nil table.play_land(uid, 0)
     log = table.view_for(uid)[:log]
-    played = log.find { |e| e[:text] == "#{player.name} played Scoured Barrens" }
-    gain = log.find { |e| e[:text] == "#{player.name} gains 1 life" }
+    played = log.find { |e| e[:text] == "#{player.name} played Scoured Barrens (tapped)" }
+    gain = log.find { |e| e[:text].start_with?("#{player.name} gains 1 life") }
 
     assert_nil played[:parent_id]
     assert_equal 0, played[:depth]
@@ -1075,12 +1212,28 @@ class TableTest < ActiveSupport::TestCase
     assert_equal "Scoured Barrens", gain[:via]
   end
 
+  test "a saga chapter is its own log entry, and what it does does not repeat the saga's name" do
+    table = started_table
+    game = table.game
+    active = game.current_turn.active_player
+    uid = table.seats.find { |s| s.player == active }.uid
+    Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::TheBindingOfTheTitans.new(game: game, owner: active))
+    game.settle!
+
+    log = table.view_for(uid)[:log]
+    chapter = log.find { |e| e[:text] == "Chapter I: The Binding of the Titans" }
+    assert chapter, log.map { |e| e[:text] }.inspect
+    mills = log.select { |e| e[:text].include?("mills") }
+    assert mills.any?
+    assert(mills.all? { |e| e[:parent_id] == chapter[:id] && e[:via].nil? })
+  end
+
   test "choices answered later are linked to the ability that asked" do
     table = started_table
     active = table.game.current_turn.active_player
     uid = table.seats.find { |s| s.player == active }.uid
     other = table.game.opponents(active).first
-    Magic::Permanent.resolve(game: table.game, card: Magic::Cards::GoblinArsonist.new(game: table.game, owner: active)).destroy!
+    Magic::Permanent.resolve_spell(game: table.game, card: Magic::Cards::GoblinArsonist.new(game: table.game, owner: active)).destroy!
     table.game.settle!
     table.choose(uid, "yes")
     table.choose(uid, other.name)
@@ -1103,15 +1256,15 @@ class TableTest < ActiveSupport::TestCase
     player.hand.add(composer)
     enchantment = Magic::Cards::FontOfFertility.new(game: game, owner: player)
 
-    Magic::Permanent.resolve(game: game, card: composer)
-    Magic::Permanent.resolve(game: game, card: enchantment)
+    Magic::Permanent.resolve_spell(game: game, card: composer)
+    Magic::Permanent.resolve_spell(game: game, card: enchantment)
     game.settle!
     table.send(:dismiss_empty_choices!) # every real action ends with this sweep
 
     assert_nil table.view_for(uid)[:choice]
     log = table.view_for(uid)[:log]
     skipped = log.find { |e| e[:kind] == :skip }
-    assert_match(/nothing to choose for Composer of Spring/, skipped[:text])
+    assert_match(/no legal choice for Composer of Spring/, skipped[:text])
     assert_not_nil skipped[:parent_id]
   end
 
@@ -1123,9 +1276,9 @@ class TableTest < ActiveSupport::TestCase
     player = game.current_turn.active_player
     uid = table.seats.find { |s| s.player == player }.uid
     6.times do
-      Magic::Permanent.resolve(game: game, card: Magic::Cards::Plains.new(game: game, owner: player)).controlled_since_turn = 0
+      Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::Plains.new(game: game, owner: player)).controlled_since_turn = 0
     end
-    bears = Magic::Permanent.resolve(game: game, card: Magic::Cards::GrizzlyBears.new(game: game, owner: player))
+    bears = Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::GrizzlyBears.new(game: game, owner: player))
     farewell = Magic::Cards::Farewell.new(game: game, owner: player)
     player.hand.add(farewell)
 
@@ -1154,7 +1307,7 @@ class TableTest < ActiveSupport::TestCase
     game = table.game
     player = game.current_turn.active_player
     uid = table.seats.find { |s| s.player == player }.uid
-    6.times { Magic::Permanent.resolve(game: game, card: Magic::Cards::Plains.new(game: game, owner: player)).controlled_since_turn = 0 }
+    6.times { Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::Plains.new(game: game, owner: player)).controlled_since_turn = 0 }
     farewell = Magic::Cards::Farewell.new(game: game, owner: player)
     player.hand.add(farewell)
 
@@ -1172,7 +1325,7 @@ class TableTest < ActiveSupport::TestCase
     game = table.game
     player = game.current_turn.active_player
     uid = table.seats.find { |s| s.player == player }.uid
-    khalni = Magic::Permanent.resolve(game: game, card: Magic::Cards::KhalniHeartExpedition.new(game: game, owner: player))
+    khalni = Magic::Permanent.resolve_spell(game: game, card: Magic::Cards::KhalniHeartExpedition.new(game: game, owner: player))
     game.settle!
     ability = -> { table.view_for(uid)[:you][:battlefield].find { |p| p[:id] == khalni.object_id }[:abilities].first }
 
@@ -1191,10 +1344,10 @@ class TableTest < ActiveSupport::TestCase
     active = table.game.current_turn.active_player
     other = table.game.opponents(active).first
     other_uid = table.seats.find { |s| s.player == other }.uid
-    Magic::Permanent.resolve(game: table.game, card: Magic::Cards::GrizzlyBears.new(game: table.game, owner: other))
+    Magic::Permanent.resolve_spell(game: table.game, card: Magic::Cards::GrizzlyBears.new(game: table.game, owner: other))
     saga = Magic::Cards::TheEldestReborn.new(game: table.game, owner: active)
     active.hand.add(saga)
-    Magic::Permanent.resolve(game: table.game, card: saga)
+    Magic::Permanent.resolve_spell(game: table.game, card: saga)
     table.game.settle!
 
     assert_equal true, table.view_for(other_uid)[:choice][:chooser]
@@ -1203,7 +1356,7 @@ class TableTest < ActiveSupport::TestCase
 
   test "a colour choice offers the five colours" do
     table = started_table
-    prompt = ChoicePrompt.new(Magic::Cards::CarpetOfFlowers::ColorChoice.new(actor: Magic::Permanent.resolve(game: table.game, card: Magic::Cards::CarpetOfFlowers.new(game: table.game, owner: table.game.players.first))), table.game)
+    prompt = ChoicePrompt.new(Magic::Cards::CarpetOfFlowers::ColorChoice.new(actor: Magic::Permanent.resolve_spell(game: table.game, card: Magic::Cards::CarpetOfFlowers.new(game: table.game, owner: table.game.players.first))), table.game)
 
     assert_equal "options", prompt.view[:kind]
     assert_equal %w[white blue black red green], prompt.view[:options].map { |o| o[:id] }
