@@ -29,12 +29,13 @@ class DeckTest < ActiveSupport::TestCase
     assert_equal Table::DECK, TableRegistry.fetch("deck-test-none").send(:view_for, "nobody")[:deck]
   end
 
-  test "the choices are the four decks, each led by its commander" do
+  test "the choices are the five decks, each led by its commander" do
     commanders = Deck::CHOICES.to_h { |name| [name, Deck.load(name).commander] }
 
     assert_equal(
       { "enchantress" => "Anikthea, Hand of Erebos", "elves" => "Lathril, Blade of the Elves",
-        "jeskai" => "Zinnia, Valley's Voice", "korvold" => "Korvold, Fae-Cursed King" },
+        "jeskai" => "Zinnia, Valley's Voice", "korvold" => "Korvold, Fae-Cursed King",
+        "endless_punishment" => "Valgavoth, Harrower of Souls" },
       commanders
     )
     assert_equal commanders.map { |name, commander| { name: name, commander: commander } },

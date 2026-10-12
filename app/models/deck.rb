@@ -4,7 +4,7 @@ class Deck
   Entry = Struct.new(:count, :name, :card_class)
 
   # The decks a player can pick when joining a game; each deck's first card is its commander.
-  CHOICES = %w[enchantress elves jeskai korvold].freeze
+  CHOICES = %w[enchantress elves jeskai korvold endless_punishment].freeze
 
   attr_reader :name, :entries
 
@@ -44,12 +44,18 @@ class Deck
     entries.select(&:card_class).flat_map { |entry| [entry.card_class] * entry.count }
   end
 
-  private
-
-  def card_class_for(card_name)
+  def self.card_class_for(card_name)
     # A hyphen separates words ("Gilt-Leaf" is GiltLeaf); an apostrophe just disappears ("Serpent's" is Serpents).
     # A double-faced card is listed with both faces ("Needleverge Pathway / Pillarverge Pathway"): the front is the class.
-    const = card_name.split(" / ").first.tr("-", " ").gsub(/[^a-z\s]/i, "").split.map(&:capitalize).join
-    Magic::Cards.const_get(const) if Magic::Cards.const_defined?(const)
+    # A Room is one class named for both doors ("Spiked Corridor / Torture Pit" is SpikedCorridorTorturePit), so try that first.
+    [card_name, card_name.split(" / ").first].each do |candidate|
+      const = candidate.tr("-/", "  ").gsub(/[^a-z\s]/i, "").split.map(&:capitalize).join
+      return Magic::Cards.const_get(const) if Magic::Cards.const_defined?(const)
+    end
+    nil
   end
+
+  private
+
+  def card_class_for(card_name) = self.class.card_class_for(card_name)
 end
